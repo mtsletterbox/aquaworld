@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Подводный мир</title>
+<meta name="description" content="Анимированная сцена подводного мира на canvas: рыбы, водоросли, пузырьки и лучи света.">
+<style>
+  html {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: linear-gradient(#006994, #00334e 50%, #001220);
+  }
+  body {
+    margin: 0; padding: 0; overflow: hidden;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  canvas {
+    display: block;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #ui {
+    position: absolute; top: 15px; left: 15px;
+    background: rgba(0, 25, 45, 0.7);
+    padding: 12px; border-radius: 8px;
+    color: #fff; font-size: 13px; line-height: 1.35;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+  #ui h1 { margin: 0 0 2px; font-size: 13px; font-weight: 700; }
+  #ui p  { margin: 0; }
+  #ui button {
+    margin-top: 8px; padding: 5px 10px;
+    background: #00697a; color: #fff;
+    border: none; border-radius: 4px;
+    cursor: pointer; font: inherit;
+  }
+  #ui button:hover { background: #007d92; }
+  #ui button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div id="ui">
+  <h1>Подводный мир</h1>
+  <p>Клик — пузырьки и корм</p>
+  <button type="button" id="newWorld">Новый мир</button>
+</div>
+<canvas id="c" role="img" aria-label="Анимированная сцена подводного мира"></canvas>
+
+<script>
+const c = document.getElementById('c');
+const ctx = c.getContext('2d');
+
+const TAU = Math.PI * 2;
+const rnd = (a, b) => Math.random() * (b - a) + a;
+
+let w = 0, h = 0, t = 0;
+let weeds = [], fishes = [], bubbles = [], rays = [], ground = [], foods = [];
+let groundPath = new Path2D();
+
+/* ---------- sizing (devicePixelRatio aware) ---------- */
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  w = window.innerWidth;
+  h = window.innerHeight;
+  c.width  = Math.round(w * dpr);
+  c.height = Math.round(h * dpr);
+  c.style.width  = w + 'px';
+  c.style.height = h + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+/* ---------- entities ---------- */
+class Weed {
+  constructor(x) {
+    this.x = x;
+    this.seg = Math.floor(rnd(8, 16));
+    this.sh  = rnd(12, 20);
+    this.lw  = rnd(5, 12);
+    this.ph  = rnd(0, TAU);
+    this.color = `hsla(${rnd(110, 165)},70%,30%,0.85)`;
+  }
+  draw() {
+    ctx.beginPath();
+    ctx.moveTo(this.x, h);
+    for (let i = 1; i <= this.seg; i++) {
+      ctx.lineTo(this.x + Math.sin(t * 0.03 + this.ph + i * 0.3) * (i * 1.6), h - i * this.sh);
+    }
+    ctx.strokeStyle = this.color;
+    ctx.lineWidth = this.lw;
+    ctx.stroke();
+  }
+}
+
+class Fish {
+  constructor() { this.reset(); }
+  reset() {
+    this.s   = rnd(8, 22);
+    this.dir = Math.random() > 0.5 ? 1 : -1;
+    this.x   = this.dir === 1 ? -40 : w + 40;
+    this.y   = rnd(h * 0.15, h * 0.8);
+    this.sp  = rnd(1, 3) * (15 / this.s);
+    this.vx  = this.sp * this.dir;
+    this.vy  = rnd(-0.3, 0.3);
+    this.ph  = rnd(0, TAU);
+    this.color = `hsl(${rnd(0, 360)},80%,55%)`;
+  }
+  update(dt) {
+    let target = null, minD2 = 250 * 250;
+    for (const f of foods) {
+      const dx = f.x - this.x, dy = f.y - this.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < minD2) { minD2 = d2; target = f; }
+    }
+    const damp = 1 - Math.pow(0.95, dt);
+
+    if (target) {
+      const a = Math.atan2(target.y - this.y, target.x - this.x);
+      this.vx += Math.cos(a) * 0.15 * dt;
+      this.vy += Math.sin(a) * 0.15 * dt;
+      this.dir = this.vx >= 0 ? 1 : -1;
+      if (minD2 < this.s * this.s) target.eaten = true;
+    } else {
+      this.vx += (this.sp * this.dir - this.vx) * damp;
+      this.vy += (Math.sin(t * 0.02 + this.ph) * 0.5 - this.vy) * damp;
+    }
+
+    const maxV = this.sp * 3;
+    if (this.vx >  maxV) this.vx =  maxV;
+    if (this.vx < -maxV) this.vx = -maxV;
+    if (this.vy >  maxV) this.vy =  maxV;
+    if (this.vy < -maxV) this.vy = -maxV;
+
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+
+    if (this.y < 20)     { this.y = 20;     this.vy =  Math.abs(this.vy); }
+    if (this.y > h - 20) { this.y = h - 20; this.vy = -Math.abs(this.vy); }
+
+    if ((this.dir === 1 && this.x > w + 50) || (this.dir === -1 && this.x < -50)) {
+      this.reset();
+    }
+  }
+  draw() {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    if (this.dir === -1) ctx.scale(-1, 1);
+    ctx.rotate(Math.atan2(this.vy, Math.abs(this.vx)));
+
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, this.s, this.s * 0.55, 0, 0, TAU);
+    ctx.fill();
+
+    const tw = Math.sin(t * 0.25 + this.ph) * (this.s * 0.4);
+    ctx.beginPath();
+    ctx.moveTo(-this.s * 0.8, 0);
+    ctx.lineTo(-this.s * 1.5, -this.s * 0.5 + tw);
+    ctx.lineTo(-this.s * 1.5,  this.s * 0.5 + tw);
+    ctx.fill();
+
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(this.s * 0.5, -this.s * 0.15, this.s * 0.18, 0, TAU);
+    ctx.fill();
+
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(this.s * 0.55, -this.s * 0.15, this.s * 0.09, 0, TAU);
+    ctx.fill();
+
+    ctx.restore();
+  }
+}
+
+/* ---------- world setup ---------- */
+function init() {
+  weeds = []; fishes = []; bubbles = []; rays = []; ground = []; foods = [];
+
+  for (let i = 0; i <= 20; i++) {
+    ground.push({ x: (w / 20) * i, y: h - rnd(h * 0.03, h * 0.09) });
+  }
+  groundPath = new Path2D();
+  groundPath.moveTo(0, h);
+  for (const p of ground) groundPath.lineTo(p.x, p.y);
+  groundPath.lineTo(w, h);
+  groundPath.closePath();
+
+  for (let i = 0; i < w / 35; i++) weeds.push(new Weed(rnd(10, w - 10)));
+
+  const fishCount = Math.min(80, Math.floor((w * h) / 35000) + 12);
+  for (let i = 0; i < fishCount; i++) fishes.push(new Fish());
+
+  for (let i = 0; i < 40; i++) {
+    bubbles.push({ x: rnd(0, w), y: rnd(0, h), r: rnd(2, 6), s: rnd(1, 3), ph: rnd(0, TAU) });
+  }
+
+  const rayGrad = ctx.createLinearGradient(0, 0, 0, h * 0.85);
+  rayGrad.addColorStop(0, 'rgba(135,206,250,0.16)');
+  rayGrad.addColorStop(1, 'rgba(135,206,250,0)');
+  for (let i = 0; i < 6; i++) {
+    rays.push({
+      x: rnd(w * 0.1, w * 0.9),
+      w: rnd(40, 130),
+      a: rnd(0.15, 0.35),
+      ph: rnd(0, TAU),
+      grad: rayGrad
+    });
+  }
+}
+
+/* ---------- main loop (delta-time based) ---------- */
+let last = 0;
+
+function loop(now) {
+  if (!last) last = now;
+  let dt = (now - last) / 16.667;
+  last = now;
+  if (!(dt > 0)) dt = 1;
+  dt = Math.min(dt, 3);
+
+  t = (t + dt) % 100000;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // light rays
+  for (const r of rays) {
+    const sw = Math.sin(t * 0.01 + r.ph) * 30;
+    ctx.fillStyle = r.grad;
+    ctx.beginPath();
+    ctx.moveTo(r.x + sw, 0);
+    ctx.lineTo(r.x + r.w + sw, 0);
+    ctx.lineTo(r.x + r.w + h * r.a + sw, h * 0.85);
+    ctx.lineTo(r.x + h * r.a + sw, h * 0.85);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // weeds
+  ctx.lineCap = 'round';
+  for (const wd of weeds) wd.draw();
+
+  // terrain
+  ctx.fillStyle = '#041c2c';
+  ctx.fill(groundPath);
+
+  // food
+  ctx.fillStyle = '#ffb74d';
+  for (let i = foods.length - 1; i >= 0; i--) {
+    const f = foods[i];
+    f.y += f.vy * dt;
+    f.x += Math.sin(t * 0.05 + f.y * 0.05) * 0.3 * dt;
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, 3, 0, TAU);
+    ctx.fill();
+    if (f.y > h - 20 || f.eaten) foods.splice(i, 1);
+  }
+
+  // fish
+  for (const f of fishes) { f.update(dt); f.draw(); }
+
+  // bubbles — one batched path
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (const b of bubbles) {
+    b.y -= b.s * dt;
+    b.x += Math.sin(t * 0.05 + b.ph) * 0.6 * dt;
+    if (b.y < -10) { b.y = h + 10; b.x = rnd(0, w); }
+    ctx.moveTo(b.x + b.r, b.y);
+    ctx.arc(b.x, b.y, b.r, 0, TAU);
+  }
+  ctx.stroke();
+
+  requestAnimationFrame(loop);
+}
+
+/* ---------- interaction ---------- */
+c.addEventListener('pointerdown', e => {
+  e.preventDefault();
+
+  const x = e.clientX, y = e.clientY;
+
+  for (let i = 0; i < 6; i++) {
+    bubbles.push({
+      x: x + rnd(-15, 15), y: y + rnd(-15, 15),
+      r: rnd(2, 6), s: rnd(1, 3), ph: rnd(0, TAU)
+    });
+  }
+  if (bubbles.length > 90) bubbles.splice(0, bubbles.length - 84);
+
+  if (foods.length < 120) {
+    for (let i = 0; i < 4; i++) {
+      foods.push({ x: x + rnd(-15, 15), y: y + rnd(-15, 15), vy: rnd(0.4, 1), eaten: false });
+    }
+  }
+}, { passive: false });
+
+document.getElementById('newWorld').addEventListener('click', init);
+
+/* ---------- resize, debounced ---------- */
+let rz;
+window.addEventListener('resize', () => {
+  clearTimeout(rz);
+  rz = setTimeout(() => { resize(); init(); }, 150);
+});
+
+/* ---------- go ---------- */
+resize();
+init();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
