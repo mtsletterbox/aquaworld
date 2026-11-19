@@ -1,10 +1,14 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Подводный мир</title>
-<meta name="description" content="Анимированная сцена подводного мира на canvas: рыбы, водоросли, пузырьки и лучи света.">
+<title>Underwater World</title>
+<meta name="description" content="Animated underwater world scene on canvas: fish, seaweed, bubbles, and light rays.">
+
+<!-- Favicon (Inline SVG) -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='48' fill='%23444'/><path d='M 50 2 A 48 48 0 0 0 50 98 A 48 48 0 0 0 50 2 Z M 50 15 C 65 15 80 25 80 45 C 80 55 70 60 60 60 C 70 60 75 70 75 80 C 75 85 70 90 60 90 C 40 90 20 75 20 50 C 20 25 35 15 50 15 Z' fill='white'/></svg>">
+
 <style>
   html {
     margin: 0; padding: 0; height: 100%; overflow: hidden;
@@ -40,11 +44,11 @@
 </head>
 <body>
 <div id="ui">
-  <h1>Подводный мир</h1>
-  <p>Клик — пузырьки и корм</p>
-  <button type="button" id="newWorld">Новый мир</button>
+  <h1>Underwater World</h1>
+  <p>Click — bubbles and food</p>
+  <button type="button" id="newWorld">New World</button>
 </div>
-<canvas id="c" role="img" aria-label="Анимированная сцена подводного мира"></canvas>
+<canvas id="c" role="img" aria-label="Animated underwater world scene"></canvas>
 
 <script>
 const c = document.getElementById('c');
